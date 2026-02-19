@@ -1,12 +1,11 @@
 import * as vscode from 'vscode';
 
 import { EpubParser } from './epubParser';
-import { createGenerator, LanguageId } from './codeGenerator';
+import { createGenerator, LanguageId } from './generators';
 
 export class CodeReaderContentProvider implements vscode.TextDocumentContentProvider {
     private _onDidChange = new vscode.EventEmitter<vscode.Uri>();
     private textLineRangesMap = new Map<string, Map<number, [number, number]>>();
-    private languageIdMap = new Map<string, LanguageId>();
 
     constructor() { }
 
@@ -22,13 +21,8 @@ export class CodeReaderContentProvider implements vscode.TextDocumentContentProv
         return this.textLineRangesMap.get(uri.path) ?? new Map();
     }
 
-    public getLanguageId(uri: vscode.Uri): LanguageId {
-        return this.languageIdMap.get(uri.path) ?? 'python';
-    }
-
     public invalidate(uri: vscode.Uri): void {
         this.textLineRangesMap.delete(uri.path);
-        this.languageIdMap.delete(uri.path);
         this._onDidChange.fire(uri);
     }
 
@@ -44,12 +38,10 @@ export class CodeReaderContentProvider implements vscode.TextDocumentContentProv
             const generator = createGenerator(lang);
             const result = generator.generate(book);
             this.textLineRangesMap.set(uri.path, result.textLineRanges);
-            this.languageIdMap.set(uri.path, lang);
             return result.code;
         } catch (err: unknown) {
             const errorMessage = err instanceof Error ? err.message : String(err);
             console.error('Error parsing EPUB:', errorMessage);
-            this.languageIdMap.set(uri.path, lang);
             return errorComment(lang, errorMessage);
         }
     }

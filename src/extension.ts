@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 import { CodeReaderContentProvider } from './contentProvider';
 import { Storage } from './storage';
+import { LANGUAGE_OPTIONS, LanguageId } from './generators';
 
 function applyHighlights(
     editor: vscode.TextEditor,
@@ -53,7 +54,8 @@ async function openEpub(
 ): Promise<vscode.TextEditor | undefined> {
     const codereaderUri = epubFileUri.with({ scheme: 'codereader' });
     const doc = await vscode.workspace.openTextDocument(codereaderUri);
-    await vscode.languages.setTextDocumentLanguage(doc, provider.getLanguageId(codereaderUri));
+    const lang = vscode.workspace.getConfiguration('codereader').get<LanguageId>('language', 'python');
+    await vscode.languages.setTextDocumentLanguage(doc, lang);
     const editor = await vscode.window.showTextDocument(doc, { preview: false });
 
     const hash = Storage.hash(epubFileUri.fsPath);
@@ -212,16 +214,60 @@ export function activate(context: vscode.ExtensionContext) {
         epubEditorProvider
     );
 
-    // ── Notify on language setting change ─────────────────────────────────────
+    // ── Status bar language indicator ──────────────────────────────────────
+    const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+    statusBarItem.command = 'codereader.switchLanguage';
+    statusBarItem.tooltip = 'CodeReader: Switch rendering language';
+
+    const updateStatusBar = () => {
+        const editor = vscode.window.activeTextEditor;
+        if (editor?.document.uri.scheme === 'codereader') {
+            const lang = vscode.workspace.getConfiguration('codereader').get<LanguageId>('language', 'python');
+            const option = LANGUAGE_OPTIONS.find(o => o.id === lang);
+            statusBarItem.text = `$(file-code) ${option?.label ?? lang}`;
+            statusBarItem.show();
+        } else {
+            statusBarItem.hide();
+        }
+    };
+
+    context.subscriptions.push(
+        statusBarItem,
+        vscode.window.onDidChangeActiveTextEditor(updateStatusBar)
+    );
+    updateStatusBar();
+
+    // ── Switch language command ─────────────────────────────────────────
+    const switchLanguageDisposable = vscode.commands.registerCommand('codereader.switchLanguage', async () => {
+        const current = vscode.workspace.getConfiguration('codereader').get<LanguageId>('language', 'python');
+        const items = LANGUAGE_OPTIONS.map(o => ({
+            label: o.label,
+            id: o.id,
+            description: o.id === current ? '(active)' : undefined,
+        }));
+
+        const picked = await vscode.window.showQuickPick(items, {
+            placeHolder: 'Select rendering language',
+        });
+        if (!picked || picked.id === current) { return; }
+
+        await vscode.workspace.getConfiguration('codereader').update(
+            'language', picked.id, vscode.ConfigurationTarget.Global
+        );
+        // onDidChangeConfiguration handles the re-render and status bar update
+    });
+
+    // ── Re-render on language config change (from any source) ──────────────
     const configChangeDisposable = vscode.workspace.onDidChangeConfiguration(e => {
         if (!e.affectsConfiguration('codereader.language')) { return; }
-        const hasOpenBook = vscode.window.visibleTextEditors.some(
-            ed => ed.document.uri.scheme === 'codereader'
-        );
-        if (hasOpenBook) {
-            vscode.window.showInformationMessage(
-                'CodeReader: Language changed. Reopen your EPUB to apply the new language.'
-            );
+        const newLang = vscode.workspace.getConfiguration('codereader').get<LanguageId>('language', 'python');
+
+        updateStatusBar();
+
+        for (const ed of vscode.window.visibleTextEditors) {
+            if (ed.document.uri.scheme !== 'codereader') { continue; }
+            provider.invalidate(ed.document.uri);
+            vscode.languages.setTextDocumentLanguage(ed.document, newLang);
         }
     });
 
@@ -229,7 +275,7 @@ export function activate(context: vscode.ExtensionContext) {
         openEpubDisposable, highlightDisposable, removeHighlightDisposable,
         removeAtDisposable, selectionDisposable, hoverDisposable,
         textEditorDisposable, editorProviderRegistration, providerRegistration,
-        configChangeDisposable
+        switchLanguageDisposable, configChangeDisposable
     );
 }
 

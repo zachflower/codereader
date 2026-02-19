@@ -18,8 +18,8 @@
         "title": "CodeReader: Open EPUB"
       },
       {
-        "command": "codereader.highlightSelection",
-        "title": "CodeReader: Highlight Selection"
+        "command": "codereader.switchLanguage",
+        "title": "CodeReader: Switch Language"
       },
       {
         "command": "codereader.removeHighlight",
