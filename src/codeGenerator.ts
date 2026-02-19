@@ -2,7 +2,8 @@ import { Book, BookChapter } from './epubParser';
 
 export interface GenerationResult {
     code: string;
-    textLineNumbers: Set<number>;
+    // line number → [startChar, endChar] of the actual book text within that line
+    textLineRanges: Map<number, [number, number]>;
 }
 
 const METHOD_NAMES = ['_process_text', '_read_passage', '_consume'];
@@ -10,12 +11,12 @@ const VAR_NAMES = ['_content', '_buffer', '_segment', '_data'];
 
 export class PythonGenerator {
     generate(book: Book): GenerationResult {
-        const textLineNumbers = new Set<number>();
+        const textLineRanges = new Map<number, [number, number]>();
         const lines: string[] = [];
 
         const emit = (line: string) => lines.push(line);
-        const emitText = (line: string) => {
-            textLineNumbers.add(lines.length);
+        const emitText = (line: string, textStart: number, textEnd: number) => {
+            textLineRanges.set(lines.length, [textStart, textEnd]);
             lines.push(line);
         };
 
@@ -40,14 +41,14 @@ export class PythonGenerator {
         emit(`    book = ${this.toClassName(book.title)}()`);
         emit(`    book.read()`);
 
-        return { code: lines.join('\n'), textLineNumbers };
+        return { code: lines.join('\n'), textLineRanges };
     }
 
     private generateChapter(
         chapter: BookChapter,
         index: number,
         emit: (line: string) => void,
-        emitText: (line: string) => void
+        emitText: (line: string, textStart: number, textEnd: number) => void
     ): void {
         emit(`    def chapter_${index}(self):`);
 
@@ -72,27 +73,35 @@ export class PythonGenerator {
                 const variant = this.nextSeed(seed) % 4;
 
                 switch (mode) {
-                    case 0:
-                        emitText(`        # ${text}`);
+                    case 0: {
+                        const prefix = `        # `;
+                        emitText(`${prefix}${text}`, prefix.length, prefix.length + text.length);
                         break;
+                    }
                     case 1: {
                         const method = METHOD_NAMES[variant % METHOD_NAMES.length];
-                        emitText(`        self.${method}("${escaped}")`);
+                        const prefix = `        self.${method}("`;
+                        emitText(`${prefix}${escaped}")`, prefix.length, prefix.length + escaped.length);
                         break;
                     }
-                    case 2:
+                    case 2: {
+                        const indent = `        `;
                         emit(`        """`);
-                        emitText(`        ${text}`);
+                        emitText(`${indent}${text}`, indent.length, indent.length + text.length);
                         emit(`        """`);
                         break;
+                    }
                     case 3: {
                         const varName = VAR_NAMES[variant % VAR_NAMES.length];
-                        emitText(`        ${varName} = "${escaped}"`);
+                        const prefix = `        ${varName} = "`;
+                        emitText(`${prefix}${escaped}"`, prefix.length, prefix.length + escaped.length);
                         break;
                     }
-                    case 4:
-                        emitText(`        sys.stdout.write("${escaped}\\n")`);
+                    case 4: {
+                        const prefix = `        sys.stdout.write("`;
+                        emitText(`${prefix}${escaped}\\n")`, prefix.length, prefix.length + escaped.length);
                         break;
+                    }
                 }
             }
         }

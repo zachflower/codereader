@@ -11,18 +11,35 @@ function applyHighlights(
 ) {
     const hash = Storage.hash(editor.document.uri.path);
     const savedHighlights = storage.getHighlights(hash);
-    const textLines = provider.getTextLineNumbers(editor.document.uri);
+    const textLineRanges = provider.getTextLineRanges(editor.document.uri);
 
     const decorationRanges: vscode.Range[] = [];
     for (const h of savedHighlights) {
         const saved = h.range;
         for (let line = saved.start.line; line <= saved.end.line; line++) {
-            if (!textLines.has(line)) { continue; }
-            if (line >= editor.document.lineCount) { continue; }
-            const lineLen = editor.document.lineAt(line).text.length;
-            const startChar = line === saved.start.line ? saved.start.character : 0;
-            const endChar = line === saved.end.line ? saved.end.character : lineLen;
-            decorationRanges.push(new vscode.Range(line, startChar, line, endChar));
+            const textRange = textLineRanges.get(line);
+            if (!textRange || line >= editor.document.lineCount) { continue; }
+            const [textStart, textEnd] = textRange;
+
+            let startChar: number;
+            let endChar: number;
+            if (saved.start.line === saved.end.line) {
+                startChar = Math.max(saved.start.character, textStart);
+                endChar = Math.min(saved.end.character, textEnd);
+            } else if (line === saved.start.line) {
+                startChar = Math.max(saved.start.character, textStart);
+                endChar = textEnd;
+            } else if (line === saved.end.line) {
+                startChar = textStart;
+                endChar = Math.min(saved.end.character, textEnd);
+            } else {
+                startChar = textStart;
+                endChar = textEnd;
+            }
+
+            if (startChar < endChar) {
+                decorationRanges.push(new vscode.Range(line, startChar, line, endChar));
+            }
         }
     }
     editor.setDecorations(highlightDecorationType, decorationRanges);

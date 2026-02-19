@@ -5,7 +5,7 @@ import { PythonGenerator } from './codeGenerator';
 
 export class CodeReaderContentProvider implements vscode.TextDocumentContentProvider {
     private _onDidChange = new vscode.EventEmitter<vscode.Uri>();
-    private textLineNumbersMap = new Map<string, Set<number>>();
+    private textLineRangesMap = new Map<string, Map<number, [number, number]>>();
 
     constructor() { }
 
@@ -17,8 +17,8 @@ export class CodeReaderContentProvider implements vscode.TextDocumentContentProv
         return this._onDidChange.event;
     }
 
-    public getTextLineNumbers(uri: vscode.Uri): Set<number> {
-        return this.textLineNumbersMap.get(uri.toString()) ?? new Set();
+    public getTextLineRanges(uri: vscode.Uri): Map<number, [number, number]> {
+        return this.textLineRangesMap.get(uri.path) ?? new Map();
     }
 
     private async generateBookContent(uri: vscode.Uri): Promise<string> {
@@ -30,7 +30,7 @@ export class CodeReaderContentProvider implements vscode.TextDocumentContentProv
             const book = await parser.parse();
             const generator = new PythonGenerator();
             const result = generator.generate(book);
-            this.textLineNumbersMap.set(uri.toString(), result.textLineNumbers);
+            this.textLineRangesMap.set(uri.path, result.textLineRanges);
             return result.code;
         } catch (err: unknown) {
             const errorMessage = err instanceof Error ? err.message : String(err);
