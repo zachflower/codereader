@@ -40,8 +40,13 @@ export class Storage {
         const highlights = this.context.globalState.get<Highlight[]>(key) || [];
         const filtered = highlights.filter(h => {
             const r = h.range;
-            return !(r.start.line <= line && line <= r.end.line &&
-                     r.start.character <= character && character <= r.end.character);
+            if (line < r.start.line || line > r.end.line) { return true; }
+            if (r.start.line === r.end.line) {
+                return character < r.start.character || character > r.end.character;
+            }
+            if (line === r.start.line) { return character < r.start.character; }
+            if (line === r.end.line) { return character > r.end.character; }
+            return false; // cursor on a middle line of the range → remove
         });
         this.context.globalState.update(key, filtered);
     }

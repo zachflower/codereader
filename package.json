@@ -29,14 +29,9 @@
     "menus": {
       "editor/context": [
         {
-          "command": "codereader.highlightSelection",
-          "when": "resourceScheme == codereader && editorHasSelection",
-          "group": "codereader@1"
-        },
-        {
           "command": "codereader.removeHighlight",
           "when": "resourceScheme == codereader",
-          "group": "codereader@2"
+          "group": "codereader@1"
         }
       ]
     },

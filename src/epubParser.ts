@@ -95,9 +95,21 @@ export class EpubParser {
     }
 
     private async extractTextFromHtml(html: string): Promise<string> {
-        // Very basic HTML text extraction. 
-        // We can improve this to respect <p> tags for line breaks.
-        // For now, let's just strip tags.
-        return html.replace(/<[^>]+>/g, '\n').replace(/\n\s*\n/g, '\n\n').trim();
+        // Replace closing block-level tags with paragraph breaks
+        let text = html.replace(/<\/(p|div|h[1-6]|li|blockquote|section|article)>|<br\s*\/?>/gi, '\n\n');
+        // Strip all remaining tags
+        text = text.replace(/<[^>]+>/g, '');
+        // Decode common HTML entities
+        text = text
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&nbsp;/g, ' ')
+            .replace(/&quot;/g, '"')
+            .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+            .replace(/&apos;/g, "'");
+        // Collapse horizontal whitespace within lines
+        text = text.replace(/[ \t]+/g, ' ');
+        return text.replace(/\n{3,}/g, '\n\n').trim();
     }
 }

@@ -6,20 +6,33 @@ import { Storage } from './storage';
 function applyHighlights(
     editor: vscode.TextEditor,
     storage: Storage,
-    highlightDecorationType: vscode.TextEditorDecorationType
+    highlightDecorationType: vscode.TextEditorDecorationType,
+    provider: CodeReaderContentProvider
 ) {
     const hash = Storage.hash(editor.document.uri.path);
-    const highlights = storage.getHighlights(hash);
-    editor.setDecorations(highlightDecorationType, highlights.map(h => new vscode.Range(
-        h.range.start.line, h.range.start.character,
-        h.range.end.line, h.range.end.character
-    )));
+    const savedHighlights = storage.getHighlights(hash);
+    const textLines = provider.getTextLineNumbers(editor.document.uri);
+
+    const decorationRanges: vscode.Range[] = [];
+    for (const h of savedHighlights) {
+        const saved = h.range;
+        for (let line = saved.start.line; line <= saved.end.line; line++) {
+            if (!textLines.has(line)) { continue; }
+            if (line >= editor.document.lineCount) { continue; }
+            const lineLen = editor.document.lineAt(line).text.length;
+            const startChar = line === saved.start.line ? saved.start.character : 0;
+            const endChar = line === saved.end.line ? saved.end.character : lineLen;
+            decorationRanges.push(new vscode.Range(line, startChar, line, endChar));
+        }
+    }
+    editor.setDecorations(highlightDecorationType, decorationRanges);
 }
 
 async function openEpub(
     epubFileUri: vscode.Uri,
     storage: Storage,
-    highlightDecorationType: vscode.TextEditorDecorationType
+    highlightDecorationType: vscode.TextEditorDecorationType,
+    provider: CodeReaderContentProvider
 ): Promise<vscode.TextEditor | undefined> {
     const codereaderUri = epubFileUri.with({ scheme: 'codereader' });
     const doc = await vscode.workspace.openTextDocument(codereaderUri);
@@ -32,14 +45,15 @@ async function openEpub(
         const range = new vscode.Range(progress.line, 0, progress.line, 0);
         editor.revealRange(range, vscode.TextEditorRevealType.AtTop);
     }
-    applyHighlights(editor, storage, highlightDecorationType);
+    applyHighlights(editor, storage, highlightDecorationType, provider);
     return editor;
 }
 
 class EpubEditorProvider implements vscode.CustomReadonlyEditorProvider {
     constructor(
         private readonly storage: Storage,
-        private readonly highlightDecorationType: vscode.TextEditorDecorationType
+        private readonly highlightDecorationType: vscode.TextEditorDecorationType,
+        private readonly provider: CodeReaderContentProvider
     ) {}
 
     openCustomDocument(uri: vscode.Uri): vscode.CustomDocument {
@@ -49,12 +63,10 @@ class EpubEditorProvider implements vscode.CustomReadonlyEditorProvider {
     async resolveCustomEditor(document: vscode.CustomDocument, webviewPanel: vscode.WebviewPanel): Promise<void> {
         webviewPanel.webview.html = `<!DOCTYPE html><html><body style="background:#1e1e1e;color:#ccc;font-family:sans-serif;padding:2em">Opening in CodeReader...</body></html>`;
         try {
-            await openEpub(document.uri, this.storage, this.highlightDecorationType);
+            await openEpub(document.uri, this.storage, this.highlightDecorationType, this.provider);
         } catch (e) {
             vscode.window.showErrorMessage(`Failed to open EPUB: ${e}`);
         }
-        // Defer disposal — calling dispose() synchronously causes VS Code's
-        // OverlayWebview internals to throw after resolveCustomEditor returns.
         setTimeout(() => webviewPanel.dispose(), 50);
     }
 }
@@ -79,7 +91,7 @@ export function activate(context: vscode.ExtensionContext) {
         });
         if (fileUri && fileUri[0]) {
             try {
-                await openEpub(fileUri[0], storage, highlightDecorationType);
+                await openEpub(fileUri[0], storage, highlightDecorationType, provider);
             } catch (e) {
                 vscode.window.showErrorMessage(`Failed to open EPUB: ${e}`);
             }
@@ -95,7 +107,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         const hash = Storage.hash(editor.document.uri.path);
         storage.saveHighlight(hash, { range: selection });
-        applyHighlights(editor, storage, highlightDecorationType);
+        applyHighlights(editor, storage, highlightDecorationType, provider);
     });
 
     // ── Remove highlight at cursor command ─────────────────────────────────────
@@ -106,7 +118,7 @@ export function activate(context: vscode.ExtensionContext) {
         const pos = editor.selection.active;
         const hash = Storage.hash(editor.document.uri.path);
         storage.removeHighlightAt(hash, pos.line, pos.character);
-        applyHighlights(editor, storage, highlightDecorationType);
+        applyHighlights(editor, storage, highlightDecorationType, provider);
     });
 
     // ── Auto-highlight on selection ────────────────────────────────────────────
@@ -120,7 +132,7 @@ export function activate(context: vscode.ExtensionContext) {
         selectionDebounce = setTimeout(() => {
             const hash = Storage.hash(e.textEditor.document.uri.path);
             storage.saveHighlight(hash, { range: selection });
-            applyHighlights(e.textEditor, storage, highlightDecorationType);
+            applyHighlights(e.textEditor, storage, highlightDecorationType, provider);
         }, 600);
     });
 
@@ -165,7 +177,7 @@ export function activate(context: vscode.ExtensionContext) {
         const editor = vscode.window.visibleTextEditors.find(
             e => e.document.uri.scheme === 'codereader' && e.document.uri.path === args.fsPath
         );
-        if (editor) { applyHighlights(editor, storage, highlightDecorationType); }
+        if (editor) { applyHighlights(editor, storage, highlightDecorationType, provider); }
     });
 
     // ── Progress tracking ──────────────────────────────────────────────────────
@@ -177,7 +189,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    const epubEditorProvider = new EpubEditorProvider(storage, highlightDecorationType);
+    const epubEditorProvider = new EpubEditorProvider(storage, highlightDecorationType, provider);
     const editorProviderRegistration = vscode.window.registerCustomEditorProvider(
         'codereader.epubEditor',
         epubEditorProvider
