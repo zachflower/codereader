@@ -53,7 +53,7 @@ async function openEpub(
 ): Promise<vscode.TextEditor | undefined> {
     const codereaderUri = epubFileUri.with({ scheme: 'codereader' });
     const doc = await vscode.workspace.openTextDocument(codereaderUri);
-    await vscode.languages.setTextDocumentLanguage(doc, 'python');
+    await vscode.languages.setTextDocumentLanguage(doc, provider.getLanguageId(codereaderUri));
     const editor = await vscode.window.showTextDocument(doc, { preview: false });
 
     const hash = Storage.hash(epubFileUri.fsPath);
@@ -212,10 +212,24 @@ export function activate(context: vscode.ExtensionContext) {
         epubEditorProvider
     );
 
+    // ── Notify on language setting change ─────────────────────────────────────
+    const configChangeDisposable = vscode.workspace.onDidChangeConfiguration(e => {
+        if (!e.affectsConfiguration('codereader.language')) { return; }
+        const hasOpenBook = vscode.window.visibleTextEditors.some(
+            ed => ed.document.uri.scheme === 'codereader'
+        );
+        if (hasOpenBook) {
+            vscode.window.showInformationMessage(
+                'CodeReader: Language changed. Reopen your EPUB to apply the new language.'
+            );
+        }
+    });
+
     context.subscriptions.push(
         openEpubDisposable, highlightDisposable, removeHighlightDisposable,
         removeAtDisposable, selectionDisposable, hoverDisposable,
-        textEditorDisposable, editorProviderRegistration, providerRegistration
+        textEditorDisposable, editorProviderRegistration, providerRegistration,
+        configChangeDisposable
     );
 }
 

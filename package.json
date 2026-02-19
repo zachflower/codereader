@@ -1,7 +1,7 @@
 {
   "name": "codereader",
   "displayName": "CodeReader",
-  "description": "Read EPUBs disguised as Python code",
+  "description": "Read EPUBs disguised as code",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.96.0"
@@ -34,6 +34,22 @@
           "group": "codereader@1"
         }
       ]
+    },
+    "configuration": {
+      "title": "CodeReader",
+      "properties": {
+        "codereader.language": {
+          "type": "string",
+          "enum": ["python", "javascript", "php"],
+          "enumDescriptions": [
+            "Render books as Python code",
+            "Render books as JavaScript code",
+            "Render books as PHP code"
+          ],
+          "default": "python",
+          "description": "Programming language used to render EPUBs"
+        }
+      }
     },
     "customEditors": [
       {
