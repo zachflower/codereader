@@ -1,7 +1,40 @@
 import * as vscode from 'vscode';
 
 import { CodeReaderContentProvider } from './contentProvider';
-import { Storage, Highlight } from './storage';
+import { Storage } from './storage';
+
+function applyHighlights(
+    editor: vscode.TextEditor,
+    storage: Storage,
+    highlightDecorationType: vscode.TextEditorDecorationType
+) {
+    const hash = Storage.hash(editor.document.uri.path);
+    const highlights = storage.getHighlights(hash);
+    editor.setDecorations(highlightDecorationType, highlights.map(h => new vscode.Range(
+        h.range.start.line, h.range.start.character,
+        h.range.end.line, h.range.end.character
+    )));
+}
+
+async function openEpub(
+    epubFileUri: vscode.Uri,
+    storage: Storage,
+    highlightDecorationType: vscode.TextEditorDecorationType
+): Promise<vscode.TextEditor | undefined> {
+    const codereaderUri = epubFileUri.with({ scheme: 'codereader' });
+    const doc = await vscode.workspace.openTextDocument(codereaderUri);
+    await vscode.languages.setTextDocumentLanguage(doc, 'python');
+    const editor = await vscode.window.showTextDocument(doc, { preview: false });
+
+    const hash = Storage.hash(epubFileUri.fsPath);
+    const progress = storage.getProgress(hash);
+    if (progress) {
+        const range = new vscode.Range(progress.line, 0, progress.line, 0);
+        editor.revealRange(range, vscode.TextEditorRevealType.AtTop);
+    }
+    applyHighlights(editor, storage, highlightDecorationType);
+    return editor;
+}
 
 class EpubEditorProvider implements vscode.CustomReadonlyEditorProvider {
     constructor(
@@ -14,24 +47,15 @@ class EpubEditorProvider implements vscode.CustomReadonlyEditorProvider {
     }
 
     async resolveCustomEditor(document: vscode.CustomDocument, webviewPanel: vscode.WebviewPanel): Promise<void> {
-        webviewPanel.dispose();
-        const codereaderUri = document.uri.with({ scheme: 'codereader' });
+        webviewPanel.webview.html = `<!DOCTYPE html><html><body style="background:#1e1e1e;color:#ccc;font-family:sans-serif;padding:2em">Opening in CodeReader...</body></html>`;
         try {
-            const doc = await vscode.workspace.openTextDocument(codereaderUri);
-            await vscode.languages.setTextDocumentLanguage(doc, 'python');
-            const editor = await vscode.window.showTextDocument(doc, { preview: false });
-
-            const hash = Storage.hash(document.uri.fsPath);
-            const progress = this.storage.getProgress(hash);
-            if (progress) {
-                const range = new vscode.Range(progress.line, 0, progress.line, 0);
-                editor.revealRange(range, vscode.TextEditorRevealType.AtTop);
-            }
-            const highlights = this.storage.getHighlights(hash);
-            editor.setDecorations(this.highlightDecorationType, highlights.map(h => h.range));
+            await openEpub(document.uri, this.storage, this.highlightDecorationType);
         } catch (e) {
             vscode.window.showErrorMessage(`Failed to open EPUB: ${e}`);
         }
+        // Defer disposal — calling dispose() synchronously causes VS Code's
+        // OverlayWebview internals to throw after resolveCustomEditor returns.
+        setTimeout(() => webviewPanel.dispose(), 50);
     }
 }
 
@@ -42,83 +66,114 @@ export function activate(context: vscode.ExtensionContext) {
     const provider = new CodeReaderContentProvider();
     const providerRegistration = vscode.workspace.registerTextDocumentContentProvider('codereader', provider);
 
-    // Highlight decoration type
     const highlightDecorationType = vscode.window.createTextEditorDecorationType({
         backgroundColor: 'rgba(255, 255, 0, 0.3)',
         isWholeLine: false
     });
 
-    let openEpubDisposable = vscode.commands.registerCommand('codereader.openEpub', async () => {
+    // ── Open EPUB command ──────────────────────────────────────────────────────
+    const openEpubDisposable = vscode.commands.registerCommand('codereader.openEpub', async () => {
         const fileUri = await vscode.window.showOpenDialog({
-            canSelectFiles: true,
-            canSelectFolders: false,
-            canSelectMany: false,
-            filters: {
-                'EPUB Files': ['epub']
-            }
+            canSelectFiles: true, canSelectFolders: false, canSelectMany: false,
+            filters: { 'EPUB Files': ['epub'] }
         });
-
         if (fileUri && fileUri[0]) {
-            const epubUri = fileUri[0];
-            const uri = epubUri.with({ scheme: 'codereader' });
-
             try {
-                const doc = await vscode.workspace.openTextDocument(uri);
-                await vscode.languages.setTextDocumentLanguage(doc, 'python');
-                const editor = await vscode.window.showTextDocument(doc, { preview: false });
-
-                // Restore progress
-                const hash = Storage.hash(epubUri.fsPath);
-                const progress = storage.getProgress(hash);
-                if (progress) {
-                    const range = new vscode.Range(progress.line, 0, progress.line, 0);
-                    editor.revealRange(range, vscode.TextEditorRevealType.AtTop);
-                }
-
-                // Restore highlights
-                const highlights = storage.getHighlights(hash);
-                editor.setDecorations(highlightDecorationType, highlights.map(h => h.range));
-
+                await openEpub(fileUri[0], storage, highlightDecorationType);
             } catch (e) {
                 vscode.window.showErrorMessage(`Failed to open EPUB: ${e}`);
             }
         }
     });
 
-    let highlightDisposable = vscode.commands.registerCommand('codereader.highlightSelection', () => {
+    // ── Highlight selection command (palette + context menu) ───────────────────
+    const highlightDisposable = vscode.commands.registerCommand('codereader.highlightSelection', () => {
         const editor = vscode.window.activeTextEditor;
-        if (editor && editor.document.uri.scheme === 'codereader') {
-            const selection = editor.selection;
-            if (!selection.isEmpty) {
-                const uri = editor.document.uri;
-                // The path component of our URI is the fsPath of the epub
-                const epubFsPath = uri.path;
-                // Note: URI.path might act differently on windows vs linux? 
-                // It's safer to use the original fsPath passed to openTextDocument if we can reconstruct it.
-                // In our case: `codereader:/home/user/book.epub` -> path is `/home/user/book.epub`.
-                const hash = Storage.hash(epubFsPath);
+        if (!editor || editor.document.uri.scheme !== 'codereader') { return; }
+        const selection = editor.selection;
+        if (selection.isEmpty) { return; }
 
-                const highlight: Highlight = { range: selection };
-                storage.saveHighlight(hash, highlight);
-
-                // Re-apply all highlights (appending to existing list for visual update - optimal way is to merge but sequential add logic in storage is simplest)
-                // NOTE: storage.saveHighlight pushes to array. So we should re-fetch all.
-                const highlights = storage.getHighlights(hash);
-                editor.setDecorations(highlightDecorationType, highlights.map(h => h.range));
-            }
-        }
+        const hash = Storage.hash(editor.document.uri.path);
+        storage.saveHighlight(hash, { range: selection });
+        applyHighlights(editor, storage, highlightDecorationType);
     });
 
-    // Track visible ranges for progress
-    // We update progress when the user stops scrolling for a bit, or closes the editor.
-    let textEditorDisposable = vscode.window.onDidChangeTextEditorVisibleRanges(e => {
-        if (e.textEditor.document.uri.scheme === 'codereader') {
-            if (e.visibleRanges.length > 0) {
-                const epubFsPath = e.textEditor.document.uri.path;
-                const hash = Storage.hash(epubFsPath);
-                const firstVisibleLine = e.visibleRanges[0].start.line;
-                storage.saveProgress(hash, firstVisibleLine);
+    // ── Remove highlight at cursor command ─────────────────────────────────────
+    const removeHighlightDisposable = vscode.commands.registerCommand('codereader.removeHighlight', () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor || editor.document.uri.scheme !== 'codereader') { return; }
+
+        const pos = editor.selection.active;
+        const hash = Storage.hash(editor.document.uri.path);
+        storage.removeHighlightAt(hash, pos.line, pos.character);
+        applyHighlights(editor, storage, highlightDecorationType);
+    });
+
+    // ── Auto-highlight on selection ────────────────────────────────────────────
+    let selectionDebounce: ReturnType<typeof setTimeout> | undefined;
+    const selectionDisposable = vscode.window.onDidChangeTextEditorSelection(e => {
+        if (e.textEditor.document.uri.scheme !== 'codereader') { return; }
+        const selection = e.selections[0];
+        if (selection.isEmpty) { return; }
+
+        clearTimeout(selectionDebounce);
+        selectionDebounce = setTimeout(() => {
+            const hash = Storage.hash(e.textEditor.document.uri.path);
+            storage.saveHighlight(hash, { range: selection });
+            applyHighlights(e.textEditor, storage, highlightDecorationType);
+        }, 600);
+    });
+
+    // ── Hover tooltip on highlights ────────────────────────────────────────────
+    const hoverDisposable = vscode.languages.registerHoverProvider(
+        { scheme: 'codereader' },
+        {
+            provideHover(document, position) {
+                const hash = Storage.hash(document.uri.path);
+                const highlights = storage.getHighlights(hash);
+                const hit = highlights.find(h => {
+                    const r = h.range;
+                    return new vscode.Range(
+                        r.start.line, r.start.character,
+                        r.end.line, r.end.character
+                    ).contains(position);
+                });
+                if (!hit) { return; }
+
+                const text = document.getText(new vscode.Range(
+                    hit.range.start.line, hit.range.start.character,
+                    hit.range.end.line, hit.range.end.character
+                ));
+                const removeArg = encodeURIComponent(JSON.stringify({
+                    line: position.line, character: position.character,
+                    fsPath: document.uri.path
+                }));
+                const removeCmd = `command:codereader.removeHighlightAt?${removeArg}`;
+                const md = new vscode.MarkdownString(
+                    `**Highlighted passage**\n\n> ${text.replace(/\n/g, '\n> ')}\n\n[Remove highlight](${removeCmd})`
+                );
+                md.isTrusted = true;
+                return new vscode.Hover(md);
             }
+        }
+    );
+
+    // ── Remove highlight at specific position (used by hover tooltip) ──────────
+    const removeAtDisposable = vscode.commands.registerCommand('codereader.removeHighlightAt', (args: { line: number; character: number; fsPath: string }) => {
+        const hash = Storage.hash(args.fsPath);
+        storage.removeHighlightAt(hash, args.line, args.character);
+        const editor = vscode.window.visibleTextEditors.find(
+            e => e.document.uri.scheme === 'codereader' && e.document.uri.path === args.fsPath
+        );
+        if (editor) { applyHighlights(editor, storage, highlightDecorationType); }
+    });
+
+    // ── Progress tracking ──────────────────────────────────────────────────────
+    const textEditorDisposable = vscode.window.onDidChangeTextEditorVisibleRanges(e => {
+        if (e.textEditor.document.uri.scheme !== 'codereader') { return; }
+        if (e.visibleRanges.length > 0) {
+            const hash = Storage.hash(e.textEditor.document.uri.path);
+            storage.saveProgress(hash, e.visibleRanges[0].start.line);
         }
     });
 
@@ -128,7 +183,11 @@ export function activate(context: vscode.ExtensionContext) {
         epubEditorProvider
     );
 
-    context.subscriptions.push(openEpubDisposable, highlightDisposable, textEditorDisposable, editorProviderRegistration, providerRegistration);
+    context.subscriptions.push(
+        openEpubDisposable, highlightDisposable, removeHighlightDisposable,
+        removeAtDisposable, selectionDisposable, hoverDisposable,
+        textEditorDisposable, editorProviderRegistration, providerRegistration
+    );
 }
 
 export function deactivate() { }

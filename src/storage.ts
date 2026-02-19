@@ -30,9 +30,20 @@ export class Storage {
 
     public saveHighlight(bookHash: string, highlight: Highlight) {
         const key = `highlights_${bookHash}`;
-        let highlights = this.context.globalState.get<Highlight[]>(key) || [];
+        const highlights = this.context.globalState.get<Highlight[]>(key) || [];
         highlights.push(highlight);
         this.context.globalState.update(key, highlights);
+    }
+
+    public removeHighlightAt(bookHash: string, line: number, character: number) {
+        const key = `highlights_${bookHash}`;
+        const highlights = this.context.globalState.get<Highlight[]>(key) || [];
+        const filtered = highlights.filter(h => {
+            const r = h.range;
+            return !(r.start.line <= line && line <= r.end.line &&
+                     r.start.character <= character && character <= r.end.character);
+        });
+        this.context.globalState.update(key, filtered);
     }
 
     public getHighlights(bookHash: string): Highlight[] {

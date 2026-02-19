@@ -18,10 +18,28 @@
         "title": "CodeReader: Open EPUB"
       },
       {
-          "command": "codereader.highlightSelection",
-          "title": "CodeReader: Highlight Selection"
+        "command": "codereader.highlightSelection",
+        "title": "CodeReader: Highlight Selection"
+      },
+      {
+        "command": "codereader.removeHighlight",
+        "title": "CodeReader: Remove Highlight"
       }
     ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "codereader.highlightSelection",
+          "when": "resourceScheme == codereader && editorHasSelection",
+          "group": "codereader@1"
+        },
+        {
+          "command": "codereader.removeHighlight",
+          "when": "resourceScheme == codereader",
+          "group": "codereader@2"
+        }
+      ]
+    },
     "customEditors": [
       {
         "viewType": "codereader.epubEditor",
