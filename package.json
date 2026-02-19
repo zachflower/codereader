@@ -40,11 +40,16 @@
       "properties": {
         "codereader.language": {
           "type": "string",
-          "enum": ["python", "javascript", "php"],
+          "enum": ["python", "javascript", "php", "go", "c", "cpp", "rust", "ruby"],
           "enumDescriptions": [
             "Render books as Python code",
             "Render books as JavaScript code",
-            "Render books as PHP code"
+            "Render books as PHP code",
+            "Render books as Go code",
+            "Render books as C code",
+            "Render books as C++ code",
+            "Render books as Rust code",
+            "Render books as Ruby code"
           ],
           "default": "python",
           "description": "Programming language used to render EPUBs"
