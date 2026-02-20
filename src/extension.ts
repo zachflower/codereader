@@ -67,14 +67,12 @@ async function openEpub(
         const autoWordWrap = crConfig.get<boolean>('wordWrap', true);
 
         if (autoWordWrap) {
-            const wrapColumn = crConfig.get<number | null>('wordWrapColumn', null);
-            if (wrapColumn !== null) {
-                // Set wordWrapColumn in workspace config and switch to wordWrapColumn mode
-                const editorConfig = vscode.workspace.getConfiguration('editor');
-                await editorConfig.update('wordWrapColumn', wrapColumn, vscode.ConfigurationTarget.Workspace);
-                await editorConfig.update('wordWrap', 'wordWrapColumn', vscode.ConfigurationTarget.Workspace);
-            } else {
-                // Simple per-editor toggle — does not persist to any settings file
+            // editor.action.toggleWordWrap is a per-editor override that doesn't modify
+            // any settings file and has no effect on other open editors.
+            const currentWrap = vscode.workspace
+                .getConfiguration('editor', doc.uri)
+                .get<string>('wordWrap', 'off');
+            if (currentWrap === 'off') {
                 await vscode.commands.executeCommand('editor.action.toggleWordWrap');
             }
         }
