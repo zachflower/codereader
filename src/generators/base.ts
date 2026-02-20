@@ -6,7 +6,7 @@ export interface GenerationResult {
     textLineRanges: Map<number, [number, number]>;
 }
 
-export type LanguageId = 'python' | 'javascript' | 'php' | 'go' | 'c' | 'cpp' | 'rust' | 'ruby' | 'csharp' | 'vb' | 'typescript' | 'objectivec' | 'java' | 'swift';
+export type LanguageId = 'python' | 'javascript' | 'php' | 'go' | 'c' | 'cpp' | 'rust' | 'ruby' | 'csharp' | 'vb' | 'typescript' | 'objectivec' | 'java' | 'swift' | 'shellscript' | 'bat' | 'powershell' | 'clojure';
 
 // Describes how a single text line should be emitted.
 // `before`/`after` carry non-text lines surrounding it (e.g. block-comment delimiters).
