@@ -67,7 +67,7 @@ Double-click any `.epub` file in the VS Code Explorer. CodeReader is the default
 - Click the language indicator in the **status bar** (bottom-right, visible whenever a book is open).
 - Or run **CodeReader: Switch Language** from the command palette.
 
-The book re-renders immediately in the chosen language. The setting is saved globally.
+The book re-renders immediately in the chosen language.
 
 ### Highlights
 
