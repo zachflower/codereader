@@ -18,7 +18,6 @@ Supports 18 programming languages (and counting) for rendering, remembers your r
 - [Configuration](#configuration)
 - [Supported Languages](#supported-languages)
 - [Known Issues](#known-issues)
-- [Roadmap](#roadmap)
 - [Changelog](#changelog)
 - [License](#license)
 

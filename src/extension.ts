@@ -4,6 +4,25 @@ import { CodeReaderContentProvider } from './contentProvider';
 import { Storage } from './storage';
 import { LANGUAGE_OPTIONS, LanguageId } from './generators';
 
+// Returns array indexed by bookLineIndex → [renderedLine, textStart, textEnd].
+// bookLineIndex is each entry's rank in the sorted textLineRanges map, making
+// it stable across renderer changes (same Nth piece of book text regardless of language).
+function buildBookToRenderedLineMap(textLineRanges: Map<number, [number, number]>): Array<[number, number, number]> {
+    const sorted = [...textLineRanges.keys()].sort((a, b) => a - b);
+    return sorted.map(renderedLine => {
+        const [textStart, textEnd] = textLineRanges.get(renderedLine)!;
+        return [renderedLine, textStart, textEnd] as [number, number, number];
+    });
+}
+
+// Returns Map<renderedLine → bookLineIndex>.
+function buildRenderedToBookLineMap(textLineRanges: Map<number, [number, number]>): Map<number, number> {
+    const sorted = [...textLineRanges.keys()].sort((a, b) => a - b);
+    const map = new Map<number, number>();
+    sorted.forEach((renderedLine, idx) => map.set(renderedLine, idx));
+    return map;
+}
+
 function applyHighlights(
     editor: vscode.TextEditor,
     storage: Storage,
@@ -13,33 +32,38 @@ function applyHighlights(
     const hash = Storage.hash(editor.document.uri.path);
     const savedHighlights = storage.getHighlights(hash);
     const textLineRanges = provider.getTextLineRanges(editor.document.uri);
+    const bookToRendered = buildBookToRenderedLineMap(textLineRanges);
 
     const decorationRanges: vscode.Range[] = [];
     for (const h of savedHighlights) {
-        const saved = h.range;
-        for (let line = saved.start.line; line <= saved.end.line; line++) {
-            const textRange = textLineRanges.get(line);
-            if (!textRange || line >= editor.document.lineCount) { continue; }
-            const [textStart, textEnd] = textRange;
+        if (typeof h.startBookLine !== 'number') { continue; } // skip legacy format
+        for (let bookLine = h.startBookLine; bookLine <= h.endBookLine; bookLine++) {
+            const info = bookToRendered[bookLine];
+            if (!info) { continue; }
+            const [renderedLine, textStart, textEnd] = info;
+            if (renderedLine >= editor.document.lineCount) { continue; }
 
             let startChar: number;
             let endChar: number;
-            if (saved.start.line === saved.end.line) {
-                startChar = Math.max(saved.start.character, textStart);
-                endChar = Math.min(saved.end.character, textEnd);
-            } else if (line === saved.start.line) {
-                startChar = Math.max(saved.start.character, textStart);
+            if (h.startBookLine === h.endBookLine) {
+                startChar = textStart + h.startCharOffset;
+                endChar = textStart + h.endCharOffset;
+            } else if (bookLine === h.startBookLine) {
+                startChar = textStart + h.startCharOffset;
                 endChar = textEnd;
-            } else if (line === saved.end.line) {
+            } else if (bookLine === h.endBookLine) {
                 startChar = textStart;
-                endChar = Math.min(saved.end.character, textEnd);
+                endChar = textStart + h.endCharOffset;
             } else {
                 startChar = textStart;
                 endChar = textEnd;
             }
 
+            startChar = Math.min(Math.max(startChar, textStart), textEnd);
+            endChar = Math.min(Math.max(endChar, textStart), textEnd);
+
             if (startChar < endChar) {
-                decorationRanges.push(new vscode.Range(line, startChar, line, endChar));
+                decorationRanges.push(new vscode.Range(renderedLine, startChar, renderedLine, endChar));
             }
         }
     }
@@ -155,8 +179,21 @@ export function activate(context: vscode.ExtensionContext) {
         const selection = editor.selection;
         if (selection.isEmpty) { return; }
 
+        const textLineRanges = provider.getTextLineRanges(editor.document.uri);
+        const renderedToBook = buildRenderedToBookLineMap(textLineRanges);
+        const startBookLine = renderedToBook.get(selection.start.line);
+        const endBookLine = renderedToBook.get(selection.end.line);
+        if (startBookLine === undefined || endBookLine === undefined) { return; }
+        const [startTextStart] = textLineRanges.get(selection.start.line)!;
+        const [endTextStart] = textLineRanges.get(selection.end.line)!;
+
         const hash = Storage.hash(editor.document.uri.path);
-        storage.saveHighlight(hash, { range: selection });
+        storage.saveHighlight(hash, {
+            startBookLine,
+            startCharOffset: selection.start.character - startTextStart,
+            endBookLine,
+            endCharOffset: selection.end.character - endTextStart,
+        });
         applyHighlights(editor, storage, highlightDecorationType, provider);
     });
 
@@ -166,8 +203,14 @@ export function activate(context: vscode.ExtensionContext) {
         if (!editor || editor.document.uri.scheme !== 'codereader') { return; }
 
         const pos = editor.selection.active;
+        const textLineRanges = provider.getTextLineRanges(editor.document.uri);
+        const renderedToBook = buildRenderedToBookLineMap(textLineRanges);
+        const bookLine = renderedToBook.get(pos.line);
+        if (bookLine === undefined) { return; }
+        const [textStart] = textLineRanges.get(pos.line)!;
+
         const hash = Storage.hash(editor.document.uri.path);
-        storage.removeHighlightAt(hash, pos.line, pos.character);
+        storage.removeHighlightAt(hash, bookLine, pos.character - textStart);
         applyHighlights(editor, storage, highlightDecorationType, provider);
     });
 
@@ -180,8 +223,21 @@ export function activate(context: vscode.ExtensionContext) {
 
         clearTimeout(selectionDebounce);
         selectionDebounce = setTimeout(() => {
+            const textLineRanges = provider.getTextLineRanges(e.textEditor.document.uri);
+            const renderedToBook = buildRenderedToBookLineMap(textLineRanges);
+            const startBookLine = renderedToBook.get(selection.start.line);
+            const endBookLine = renderedToBook.get(selection.end.line);
+            if (startBookLine === undefined || endBookLine === undefined) { return; }
+            const [startTextStart] = textLineRanges.get(selection.start.line)!;
+            const [endTextStart] = textLineRanges.get(selection.end.line)!;
+
             const hash = Storage.hash(e.textEditor.document.uri.path);
-            storage.saveHighlight(hash, { range: selection });
+            storage.saveHighlight(hash, {
+                startBookLine,
+                startCharOffset: selection.start.character - startTextStart,
+                endBookLine,
+                endCharOffset: selection.end.character - endTextStart,
+            });
             applyHighlights(e.textEditor, storage, highlightDecorationType, provider);
         }, 600);
     });
@@ -193,21 +249,41 @@ export function activate(context: vscode.ExtensionContext) {
             provideHover(document, position) {
                 const hash = Storage.hash(document.uri.path);
                 const highlights = storage.getHighlights(hash);
+                const textLineRanges = provider.getTextLineRanges(document.uri);
+                const renderedToBook = buildRenderedToBookLineMap(textLineRanges);
+                const bookToRendered = buildBookToRenderedLineMap(textLineRanges);
+
+                const hoverBookLine = renderedToBook.get(position.line);
+                if (hoverBookLine === undefined) { return; }
+                const [hoverTextStart] = textLineRanges.get(position.line)!;
+                const hoverCharOffset = position.character - hoverTextStart;
+
                 const hit = highlights.find(h => {
-                    const r = h.range;
-                    return new vscode.Range(
-                        r.start.line, r.start.character,
-                        r.end.line, r.end.character
-                    ).contains(position);
+                    if (typeof h.startBookLine !== 'number') { return false; }
+                    if (hoverBookLine < h.startBookLine || hoverBookLine > h.endBookLine) { return false; }
+                    if (h.startBookLine === h.endBookLine) {
+                        return hoverCharOffset >= h.startCharOffset && hoverCharOffset <= h.endCharOffset;
+                    }
+                    if (hoverBookLine === h.startBookLine) { return hoverCharOffset >= h.startCharOffset; }
+                    if (hoverBookLine === h.endBookLine) { return hoverCharOffset <= h.endCharOffset; }
+                    return true;
                 });
                 if (!hit) { return; }
 
-                const text = document.getText(new vscode.Range(
-                    hit.range.start.line, hit.range.start.character,
-                    hit.range.end.line, hit.range.end.character
-                ));
+                let text = '';
+                const startInfo = bookToRendered[hit.startBookLine];
+                const endInfo = bookToRendered[hit.endBookLine];
+                if (startInfo && endInfo) {
+                    const [startRenderedLine, startTextStart] = startInfo;
+                    const [endRenderedLine, endTextStart] = endInfo;
+                    text = document.getText(new vscode.Range(
+                        startRenderedLine, startTextStart + hit.startCharOffset,
+                        endRenderedLine, endTextStart + hit.endCharOffset
+                    ));
+                }
+
                 const removeArg = encodeURIComponent(JSON.stringify({
-                    line: position.line, character: position.character,
+                    bookLine: hoverBookLine, charOffset: hoverCharOffset,
                     fsPath: document.uri.path
                 }));
                 const removeCmd = `command:codereader.removeHighlightAt?${removeArg}`;
@@ -221,9 +297,9 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     // ── Remove highlight at specific position (used by hover tooltip) ──────────
-    const removeAtDisposable = vscode.commands.registerCommand('codereader.removeHighlightAt', (args: { line: number; character: number; fsPath: string }) => {
+    const removeAtDisposable = vscode.commands.registerCommand('codereader.removeHighlightAt', (args: { bookLine: number; charOffset: number; fsPath: string }) => {
         const hash = Storage.hash(args.fsPath);
-        storage.removeHighlightAt(hash, args.line, args.character);
+        storage.removeHighlightAt(hash, args.bookLine, args.charOffset);
         const editor = vscode.window.visibleTextEditors.find(
             e => e.document.uri.scheme === 'codereader' && e.document.uri.path === args.fsPath
         );

@@ -6,9 +6,16 @@ export interface ReadingProgress {
 }
 
 export interface Highlight {
-    range: vscode.Range;
-    color?: string; // Future proofing
-    text?: string; // The text highlighted
+    // Book-relative coordinates: renderer-independent positions.
+    // startBookLine/endBookLine are 0-based indices into the ordered list of
+    // text-containing lines from textLineRanges. startCharOffset/endCharOffset
+    // are character offsets from the start of the text region in that line.
+    startBookLine: number;
+    startCharOffset: number;
+    endBookLine: number;
+    endCharOffset: number;
+    color?: string;
+    text?: string;
 }
 
 export class Storage {
@@ -35,17 +42,16 @@ export class Storage {
         this.context.globalState.update(key, highlights);
     }
 
-    public removeHighlightAt(bookHash: string, line: number, character: number) {
+    public removeHighlightAt(bookHash: string, bookLine: number, charOffset: number) {
         const key = `highlights_${bookHash}`;
         const highlights = this.context.globalState.get<Highlight[]>(key) || [];
         const filtered = highlights.filter(h => {
-            const r = h.range;
-            if (line < r.start.line || line > r.end.line) { return true; }
-            if (r.start.line === r.end.line) {
-                return character < r.start.character || character > r.end.character;
+            if (bookLine < h.startBookLine || bookLine > h.endBookLine) { return true; }
+            if (h.startBookLine === h.endBookLine) {
+                return charOffset < h.startCharOffset || charOffset > h.endCharOffset;
             }
-            if (line === r.start.line) { return character < r.start.character; }
-            if (line === r.end.line) { return character > r.end.character; }
+            if (bookLine === h.startBookLine) { return charOffset < h.startCharOffset; }
+            if (bookLine === h.endBookLine) { return charOffset > h.endCharOffset; }
             return false; // cursor on a middle line of the range → remove
         });
         this.context.globalState.update(key, filtered);
