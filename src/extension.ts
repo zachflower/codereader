@@ -123,6 +123,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.workspace.onDidCloseTextDocument(doc => {
             if (doc.uri.scheme === 'codereader') {
                 wordWrapAppliedDocs.delete(doc.uri.toString());
+                provider.clearLanguage(doc.uri);
             }
         })
     );
@@ -252,7 +253,8 @@ export function activate(context: vscode.ExtensionContext) {
     const updateStatusBar = () => {
         const editor = vscode.window.activeTextEditor;
         if (editor?.document.uri.scheme === 'codereader') {
-            const lang = vscode.workspace.getConfiguration('codereader').get<LanguageId>('language', 'python');
+            const lang = provider.getLanguage(editor.document.uri)
+                ?? vscode.workspace.getConfiguration('codereader').get<LanguageId>('language', 'python');
             const option = LANGUAGE_OPTIONS.find(o => o.id === lang);
             statusBarItem.text = `$(file-code) ${option?.label ?? lang}`;
             statusBarItem.show();
@@ -269,7 +271,12 @@ export function activate(context: vscode.ExtensionContext) {
 
     // ── Switch language command ─────────────────────────────────────────
     const switchLanguageDisposable = vscode.commands.registerCommand('codereader.switchLanguage', async () => {
-        const current = vscode.workspace.getConfiguration('codereader').get<LanguageId>('language', 'python');
+        const editor = vscode.window.activeTextEditor;
+        if (!editor || editor.document.uri.scheme !== 'codereader') { return; }
+
+        const uri = editor.document.uri;
+        const current = provider.getLanguage(uri)
+            ?? vscode.workspace.getConfiguration('codereader').get<LanguageId>('language', 'python');
         const items = LANGUAGE_OPTIONS.map(o => ({
             label: o.label,
             id: o.id,
@@ -281,10 +288,11 @@ export function activate(context: vscode.ExtensionContext) {
         });
         if (!picked || picked.id === current) { return; }
 
-        await vscode.workspace.getConfiguration('codereader').update(
-            'language', picked.id, vscode.ConfigurationTarget.Global
-        );
-        // onDidChangeConfiguration handles the re-render and status bar update
+        // Store the override for this editor only, then re-render it
+        provider.setLanguage(uri, picked.id as LanguageId);
+        provider.invalidate(uri);
+        await vscode.languages.setTextDocumentLanguage(editor.document, picked.id);
+        updateStatusBar();
     });
 
     // ── Re-render on language config change (from any source) ──────────────
@@ -296,6 +304,8 @@ export function activate(context: vscode.ExtensionContext) {
 
         for (const ed of vscode.window.visibleTextEditors) {
             if (ed.document.uri.scheme !== 'codereader') { continue; }
+            // Skip editors that have a per-editor language override
+            if (provider.getLanguage(ed.document.uri) !== undefined) { continue; }
             provider.invalidate(ed.document.uri);
             vscode.languages.setTextDocumentLanguage(ed.document, newLang);
         }

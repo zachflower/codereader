@@ -6,6 +6,7 @@ import { createGenerator, LanguageId } from './generators';
 export class CodeReaderContentProvider implements vscode.TextDocumentContentProvider {
     private _onDidChange = new vscode.EventEmitter<vscode.Uri>();
     private textLineRangesMap = new Map<string, Map<number, [number, number]>>();
+    private languageOverrides = new Map<string, LanguageId>();
 
     constructor() { }
 
@@ -21,6 +22,18 @@ export class CodeReaderContentProvider implements vscode.TextDocumentContentProv
         return this.textLineRangesMap.get(uri.path) ?? new Map();
     }
 
+    public getLanguage(uri: vscode.Uri): LanguageId | undefined {
+        return this.languageOverrides.get(uri.path);
+    }
+
+    public setLanguage(uri: vscode.Uri, lang: LanguageId): void {
+        this.languageOverrides.set(uri.path, lang);
+    }
+
+    public clearLanguage(uri: vscode.Uri): void {
+        this.languageOverrides.delete(uri.path);
+    }
+
     public invalidate(uri: vscode.Uri): void {
         this.textLineRangesMap.delete(uri.path);
         this._onDidChange.fire(uri);
@@ -30,7 +43,8 @@ export class CodeReaderContentProvider implements vscode.TextDocumentContentProv
         const epubPath = uri.path;
         console.log(`Parsing EPUB at: ${epubPath}`);
 
-        const lang = vscode.workspace.getConfiguration('codereader').get<LanguageId>('language', 'python');
+        const lang = this.languageOverrides.get(uri.path)
+            ?? vscode.workspace.getConfiguration('codereader').get<LanguageId>('language', 'python');
 
         try {
             const parser = new EpubParser(epubPath);
