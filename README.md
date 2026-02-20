@@ -48,10 +48,6 @@ Supports 18 programming languages (and counting) for rendering, remembers your r
 3. Click the **`...`** menu in the top-right corner and choose **Install from VSIX…**
 4. Select the downloaded file.
 
-### Building from Source
-
-See [Development Setup](#development-setup) below.
-
 ## Usage
 
 ### Opening a Book
