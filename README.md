@@ -15,11 +15,6 @@ Supports 18 programming languages (and counting) for rendering, remembers your r
 - [Commands](#commands)
 - [Configuration](#configuration)
 - [Supported Languages](#supported-languages)
-- [How It Works](#how-it-works)
-- [Contributing](#contributing)
-- [Development Setup](#development-setup)
-- [Running Tests](#running-tests)
-- [Project Structure](#project-structure)
 - [Known Issues](#known-issues)
 - [Roadmap](#roadmap)
 - [Changelog](#changelog)
@@ -133,43 +128,6 @@ Settings are available under **Settings → Extensions → CodeReader** or in `s
 | Swift | `swift` |
 | TypeScript | `typescript` |
 | Visual Basic | `vb` |
-
-## How It Works
-
-1. **Parsing** - `EpubParser` opens the `.epub` file (a ZIP archive) using `adm-zip`, reads `META-INF/container.xml` to locate the OPF manifest, and extracts plain text from each spine item by stripping HTML tags and decoding entities.
-
-2. **Generation** - `CodeReaderContentProvider` passes the parsed `Book` object to a `LanguageGenerator`. Each language has its own generator class (e.g. `PythonGenerator`, `RustGenerator`) that extends the abstract `LanguageGenerator` base. The base class orchestrates rendering by splitting paragraphs into sentence-length chunks, then delegating each chunk to the language-specific `renderTextLine()` method. Text is emitted as one of five structural forms (comment, method call, docstring/block comment, variable assignment, or print/write statement), chosen deterministically per paragraph so the output looks varied but is consistent across re-renders.
-
-3. **Text range tracking** - For every line of generated code that contains actual book text, the generator records the exact character offsets of that text within the line (`textLineRanges`). This map is used by the highlight system to ensure highlights are painted only over prose - not over surrounding syntax.
-
-4. **Storage** - Reading progress (line number) and highlights (character ranges) are stored in VS Code's `globalState` keyed by a hash of the file path. Data persists across VS Code restarts.
-
-5. **Custom editor integration** - A `CustomReadonlyEditorProvider` is registered for `*.epub` files. When VS Code routes an `.epub` open through this provider, it immediately opens the rendered virtual document in a normal text editor and disposes the webview panel, keeping the experience purely text-based.
-
-## Contributing
-
-Contributions are welcome! Here's how to get involved:
-
-1. **Fork** the repository and clone your fork.
-2. Create a **feature branch**: `git checkout -b feature/my-feature`.
-3. Make your changes following the guidelines below.
-4. Run `npm run lint` and `npm run compile` to verify everything is clean.
-5. **Open a pull request** against the `main` branch with a clear description of what you changed and why.
-
-### Guidelines
-
-- Keep pull requests focused. One feature or fix per PR.
-- New language generators should extend `LanguageGenerator` in `src/generators/base.ts`, be added to the switch statement in `src/generators/index.ts`, and be listed in `LANGUAGE_OPTIONS`.
-- Match the existing code style (enforced by ESLint - run `npm run lint` before committing).
-- If you fix a bug, consider adding a test case.
-
-### Reporting Issues
-
-Please use [GitHub Issues](../../issues) to report bugs or request features. Include:
-- VS Code version (`Help → About`).
-- CodeReader version.
-- The EPUB that triggered the issue (if shareable), or a minimal reproduction.
-- Steps to reproduce, expected behaviour, and actual behaviour.
 
 ## Known Issues
 
