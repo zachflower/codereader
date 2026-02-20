@@ -198,14 +198,6 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    // ── Highlight selection command (palette + context menu) ───────────────────
-    const highlightDisposable = vscode.commands.registerCommand('codereader.highlightSelection', () => {
-        const editor = vscode.window.activeTextEditor;
-        if (!editor || editor.document.uri.scheme !== 'codereader') { return; }
-        if (editor.selection.isEmpty) { return; }
-        saveHighlightFromSelection(editor, editor.selection);
-    });
-
     // ── Remove highlight at cursor command ─────────────────────────────────────
     const removeHighlightDisposable = vscode.commands.registerCommand('codereader.removeHighlight', () => {
         const editor = vscode.window.activeTextEditor;
@@ -387,7 +379,7 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     context.subscriptions.push(
-        openEpubDisposable, highlightDisposable, removeHighlightDisposable,
+        openEpubDisposable, removeHighlightDisposable,
         removeAtDisposable, selectionDisposable, hoverDisposable,
         textEditorDisposable, editorProviderRegistration, providerRegistration,
         switchLanguageDisposable, configChangeDisposable,

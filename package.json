@@ -25,23 +25,10 @@
       {
         "command": "codereader.removeHighlight",
         "title": "CodeReader: Remove Highlight"
-      },
-      {
-        "command": "codereader.highlightSelection",
-        "title": "CodeReader: Highlight Selection"
-      },
-      {
-        "command": "codereader.removeHighlightAt",
-        "title": "CodeReader: Remove Highlight At Position"
       }
     ],
     "menus": {
       "editor/context": [
-        {
-          "command": "codereader.highlightSelection",
-          "when": "resourceScheme == codereader && editorHasSelection",
-          "group": "codereader@0"
-        },
         {
           "command": "codereader.removeHighlight",
           "when": "resourceScheme == codereader",
@@ -54,16 +41,8 @@
           "when": "codereader.isActive"
         },
         {
-          "command": "codereader.highlightSelection",
-          "when": "codereader.isActive && editorHasSelection"
-        },
-        {
           "command": "codereader.removeHighlight",
           "when": "codereader.isActive"
-        },
-        {
-          "command": "codereader.removeHighlightAt",
-          "when": "false"
         }
       ]
     },
