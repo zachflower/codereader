@@ -50,13 +50,35 @@ async function openEpub(
     epubFileUri: vscode.Uri,
     storage: Storage,
     highlightDecorationType: vscode.TextEditorDecorationType,
-    provider: CodeReaderContentProvider
+    provider: CodeReaderContentProvider,
+    wordWrapAppliedDocs: Set<string>
 ): Promise<vscode.TextEditor | undefined> {
     const codereaderUri = epubFileUri.with({ scheme: 'codereader' });
     const doc = await vscode.workspace.openTextDocument(codereaderUri);
     const lang = vscode.workspace.getConfiguration('codereader').get<LanguageId>('language', 'python');
     await vscode.languages.setTextDocumentLanguage(doc, lang);
     const editor = await vscode.window.showTextDocument(doc, { preview: false });
+
+    // Apply word wrap settings once per document lifetime
+    const key = codereaderUri.toString();
+    if (!wordWrapAppliedDocs.has(key)) {
+        wordWrapAppliedDocs.add(key);
+        const crConfig = vscode.workspace.getConfiguration('codereader');
+        const autoWordWrap = crConfig.get<boolean>('wordWrap', true);
+
+        if (autoWordWrap) {
+            const wrapColumn = crConfig.get<number | null>('wordWrapColumn', null);
+            if (wrapColumn !== null) {
+                // Set wordWrapColumn in workspace config and switch to wordWrapColumn mode
+                const editorConfig = vscode.workspace.getConfiguration('editor');
+                await editorConfig.update('wordWrapColumn', wrapColumn, vscode.ConfigurationTarget.Workspace);
+                await editorConfig.update('wordWrap', 'wordWrapColumn', vscode.ConfigurationTarget.Workspace);
+            } else {
+                // Simple per-editor toggle — does not persist to any settings file
+                await vscode.commands.executeCommand('editor.action.toggleWordWrap');
+            }
+        }
+    }
 
     const hash = Storage.hash(epubFileUri.fsPath);
     const progress = storage.getProgress(hash);
@@ -72,7 +94,8 @@ class EpubEditorProvider implements vscode.CustomReadonlyEditorProvider {
     constructor(
         private readonly storage: Storage,
         private readonly highlightDecorationType: vscode.TextEditorDecorationType,
-        private readonly provider: CodeReaderContentProvider
+        private readonly provider: CodeReaderContentProvider,
+        private readonly wordWrapAppliedDocs: Set<string>
     ) {}
 
     openCustomDocument(uri: vscode.Uri): vscode.CustomDocument {
@@ -82,7 +105,7 @@ class EpubEditorProvider implements vscode.CustomReadonlyEditorProvider {
     async resolveCustomEditor(document: vscode.CustomDocument, webviewPanel: vscode.WebviewPanel): Promise<void> {
         webviewPanel.webview.html = `<!DOCTYPE html><html><body style="background:#1e1e1e;color:#ccc;font-family:sans-serif;padding:2em">Opening in CodeReader...</body></html>`;
         try {
-            await openEpub(document.uri, this.storage, this.highlightDecorationType, this.provider);
+            await openEpub(document.uri, this.storage, this.highlightDecorationType, this.provider, this.wordWrapAppliedDocs);
         } catch (e) {
             vscode.window.showErrorMessage(`Failed to open EPUB: ${e}`);
         }
@@ -97,6 +120,15 @@ export function activate(context: vscode.ExtensionContext) {
     const provider = new CodeReaderContentProvider();
     const providerRegistration = vscode.workspace.registerTextDocumentContentProvider('codereader', provider);
 
+    const wordWrapAppliedDocs = new Set<string>();
+    context.subscriptions.push(
+        vscode.workspace.onDidCloseTextDocument(doc => {
+            if (doc.uri.scheme === 'codereader') {
+                wordWrapAppliedDocs.delete(doc.uri.toString());
+            }
+        })
+    );
+
     const highlightDecorationType = vscode.window.createTextEditorDecorationType({
         backgroundColor: 'rgba(255, 255, 0, 0.3)',
         isWholeLine: false
@@ -110,7 +142,7 @@ export function activate(context: vscode.ExtensionContext) {
         });
         if (fileUri && fileUri[0]) {
             try {
-                await openEpub(fileUri[0], storage, highlightDecorationType, provider);
+                await openEpub(fileUri[0], storage, highlightDecorationType, provider, wordWrapAppliedDocs);
             } catch (e) {
                 vscode.window.showErrorMessage(`Failed to open EPUB: ${e}`);
             }
@@ -208,7 +240,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    const epubEditorProvider = new EpubEditorProvider(storage, highlightDecorationType, provider);
+    const epubEditorProvider = new EpubEditorProvider(storage, highlightDecorationType, provider, wordWrapAppliedDocs);
     const editorProviderRegistration = vscode.window.registerCustomEditorProvider(
         'codereader.epubEditor',
         epubEditorProvider

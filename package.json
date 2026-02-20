@@ -53,6 +53,17 @@
           ],
           "default": "python",
           "description": "Programming language used to render EPUBs"
+        },
+        "codereader.wordWrap": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically enable word wrap when opening EPUBs in CodeReader"
+        },
+        "codereader.wordWrapColumn": {
+          "type": ["number", "null"],
+          "default": null,
+          "minimum": 1,
+          "description": "Column at which to wrap lines in CodeReader EPUBs. When set, overrides the editor's wordWrapColumn for CodeReader documents. Set to null to use the editor default."
         }
       }
     },
