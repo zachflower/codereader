@@ -1,12 +1,12 @@
 # CodeReader
 
-![Screenshot of CodeReader rendering an EPUB as Python code, with a highlighted passage and the status bar showing "Python".](./screenshot.png)
-
 > **Shhh... you're working.**
 
 CodeReader is a VS Code extension that renders EPUB ebooks as syntax-highlighted source code. Book content is wrapped in realistic-looking classes, methods, comments, and docstrings so your "code review" is actually the next chapter of your novel.
 
 Supports 18 programming languages (and counting) for rendering, remembers your reading position across sessions, and lets you save and manage highlighted passages.
+
+![Screenshot of CodeReader rendering an EPUB as Python code, with a highlighted passage and the status bar showing "Python".](./screenshot.png)
 
 ## Table of Contents
 
