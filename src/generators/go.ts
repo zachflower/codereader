@@ -8,14 +8,11 @@ export class GoGenerator extends LanguageGenerator {
     protected readonly methodNames = METHODS;
     protected readonly varNames    = VARS;
 
-    private _className = 'Book';
-
     protected fileHeader(title: string, author: string): string[] {
         return [`// ${title}`, `// By ${author}`, '', `package main`, '', `import "fmt"`];
     }
 
     protected classOpen(className: string): string[] {
-        this._className = className;
         return [
             `type ${className} struct {`,
             `    currentChapter int`,
@@ -25,7 +22,7 @@ export class GoGenerator extends LanguageGenerator {
     }
 
     protected chapterOpen(index: number): string[] {
-        return [`func (b *${this._className}) chapter${index}() {`];
+        return [`func (b *${this.className}) chapter${index}() {`];
     }
 
     protected chapterClose(): string[] {

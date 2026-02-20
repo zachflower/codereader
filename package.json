@@ -25,14 +25,45 @@
       {
         "command": "codereader.removeHighlight",
         "title": "CodeReader: Remove Highlight"
+      },
+      {
+        "command": "codereader.highlightSelection",
+        "title": "CodeReader: Highlight Selection"
+      },
+      {
+        "command": "codereader.removeHighlightAt",
+        "title": "CodeReader: Remove Highlight At Position"
       }
     ],
     "menus": {
       "editor/context": [
         {
+          "command": "codereader.highlightSelection",
+          "when": "resourceScheme == codereader && editorHasSelection",
+          "group": "codereader@0"
+        },
+        {
           "command": "codereader.removeHighlight",
           "when": "resourceScheme == codereader",
           "group": "codereader@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "codereader.switchLanguage",
+          "when": "codereader.isActive"
+        },
+        {
+          "command": "codereader.highlightSelection",
+          "when": "codereader.isActive && editorHasSelection"
+        },
+        {
+          "command": "codereader.removeHighlight",
+          "when": "codereader.isActive"
+        },
+        {
+          "command": "codereader.removeHighlightAt",
+          "when": "false"
         }
       ]
     },
@@ -41,7 +72,7 @@
       "properties": {
         "codereader.language": {
           "type": "string",
-          "enum": ["python", "javascript", "php", "go", "c", "cpp", "rust", "ruby"],
+          "enum": ["python", "javascript", "php", "go", "c", "cpp", "rust", "ruby", "csharp", "vb", "typescript", "objectivec", "java", "swift", "shellscript", "bat", "powershell", "clojure"],
           "enumDescriptions": [
             "Render books as Python code",
             "Render books as JavaScript code",
@@ -50,7 +81,17 @@
             "Render books as C code",
             "Render books as C++ code",
             "Render books as Rust code",
-            "Render books as Ruby code"
+            "Render books as Ruby code",
+            "Render books as C# code",
+            "Render books as Visual Basic code",
+            "Render books as TypeScript code",
+            "Render books as Objective-C code",
+            "Render books as Java code",
+            "Render books as Swift code",
+            "Render books as Bash code",
+            "Render books as Batch code",
+            "Render books as PowerShell code",
+            "Render books as Clojure code"
           ],
           "default": "python",
           "description": "Programming language used to render EPUBs"

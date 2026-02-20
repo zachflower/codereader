@@ -56,7 +56,7 @@ export class VBGenerator extends LanguageGenerator {
             case 1: {
                 const method = this.methodNames[variant % this.methodNames.length];
                 const prefix = `${INDENT}Me.${method}("`;
-                return { line: `${prefix}${vbStr}")`, textStart: prefix.length, textEnd: prefix.length + text.length };
+                return { line: `${prefix}${vbStr}")`, textStart: prefix.length, textEnd: prefix.length + vbStr.length };
             }
             case 2: {
                 const prefix = `${INDENT}' `;
@@ -71,11 +71,11 @@ export class VBGenerator extends LanguageGenerator {
             case 3: {
                 const varName = this.varNames[variant % this.varNames.length];
                 const prefix = `${INDENT}Dim ${varName} As String = "`;
-                return { line: `${prefix}${vbStr}"`, textStart: prefix.length, textEnd: prefix.length + text.length };
+                return { line: `${prefix}${vbStr}"`, textStart: prefix.length, textEnd: prefix.length + vbStr.length };
             }
             default: { // 4
                 const prefix = `${INDENT}Console.WriteLine("`;
-                return { line: `${prefix}${vbStr}")`, textStart: prefix.length, textEnd: prefix.length + text.length };
+                return { line: `${prefix}${vbStr}")`, textStart: prefix.length, textEnd: prefix.length + vbStr.length };
             }
         }
     }

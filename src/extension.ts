@@ -23,6 +23,10 @@ function buildRenderedToBookLineMap(textLineRanges: Map<number, [number, number]
     return map;
 }
 
+function escapeMarkdown(text: string): string {
+    return text.replace(/[[\]()\\`*_~#|>!]/g, '\\$&');
+}
+
 function applyHighlights(
     editor: vscode.TextEditor,
     storage: Storage,
@@ -91,18 +95,19 @@ async function openEpub(
         const autoWordWrap = crConfig.get<boolean>('wordWrap', true);
 
         if (autoWordWrap) {
-            // editor.action.toggleWordWrap is a per-editor override that doesn't modify
-            // any settings file and has no effect on other open editors.
+            // Toggle word wrap on if not already enabled.
+            // editor.action.toggleWordWrap applies a per-editor override without
+            // modifying settings files or affecting other editors.
             const currentWrap = vscode.workspace
                 .getConfiguration('editor', doc.uri)
-                .get<string>('wordWrap', 'off');
-            if (currentWrap === 'off') {
+                .get<string>('wordWrap');
+            if (!currentWrap || currentWrap === 'off') {
                 await vscode.commands.executeCommand('editor.action.toggleWordWrap');
             }
         }
     }
 
-    const hash = Storage.hash(epubFileUri.fsPath);
+    const hash = Storage.hash(epubFileUri.path);
     const progress = storage.getProgress(hash);
     if (progress) {
         const range = new vscode.Range(progress.line, 0, progress.line, 0);
@@ -135,6 +140,9 @@ class EpubEditorProvider implements vscode.CustomReadonlyEditorProvider {
     }
 }
 
+let selectionDebounce: ReturnType<typeof setTimeout> | undefined;
+let progressDebounce: ReturnType<typeof setTimeout> | undefined;
+
 export function activate(context: vscode.ExtensionContext) {
     console.log('Congratulations, your extension "codereader" is now active!');
 
@@ -156,6 +164,24 @@ export function activate(context: vscode.ExtensionContext) {
         backgroundColor: 'rgba(255, 255, 0, 0.3)',
         isWholeLine: false
     });
+    const saveHighlightFromSelection = (editor: vscode.TextEditor, selection: vscode.Selection) => {
+        const textLineRanges = provider.getTextLineRanges(editor.document.uri);
+        const renderedToBook = buildRenderedToBookLineMap(textLineRanges);
+        const startBookLine = renderedToBook.get(selection.start.line);
+        const endBookLine = renderedToBook.get(selection.end.line);
+        if (startBookLine === undefined || endBookLine === undefined) { return; }
+        const [startTextStart] = textLineRanges.get(selection.start.line)!;
+        const [endTextStart] = textLineRanges.get(selection.end.line)!;
+
+        const hash = Storage.hash(editor.document.uri.path);
+        storage.saveHighlight(hash, {
+            startBookLine,
+            startCharOffset: selection.start.character - startTextStart,
+            endBookLine,
+            endCharOffset: selection.end.character - endTextStart,
+        });
+        applyHighlights(editor, storage, highlightDecorationType, provider);
+    };
 
     // ── Open EPUB command ──────────────────────────────────────────────────────
     const openEpubDisposable = vscode.commands.registerCommand('codereader.openEpub', async () => {
@@ -176,25 +202,8 @@ export function activate(context: vscode.ExtensionContext) {
     const highlightDisposable = vscode.commands.registerCommand('codereader.highlightSelection', () => {
         const editor = vscode.window.activeTextEditor;
         if (!editor || editor.document.uri.scheme !== 'codereader') { return; }
-        const selection = editor.selection;
-        if (selection.isEmpty) { return; }
-
-        const textLineRanges = provider.getTextLineRanges(editor.document.uri);
-        const renderedToBook = buildRenderedToBookLineMap(textLineRanges);
-        const startBookLine = renderedToBook.get(selection.start.line);
-        const endBookLine = renderedToBook.get(selection.end.line);
-        if (startBookLine === undefined || endBookLine === undefined) { return; }
-        const [startTextStart] = textLineRanges.get(selection.start.line)!;
-        const [endTextStart] = textLineRanges.get(selection.end.line)!;
-
-        const hash = Storage.hash(editor.document.uri.path);
-        storage.saveHighlight(hash, {
-            startBookLine,
-            startCharOffset: selection.start.character - startTextStart,
-            endBookLine,
-            endCharOffset: selection.end.character - endTextStart,
-        });
-        applyHighlights(editor, storage, highlightDecorationType, provider);
+        if (editor.selection.isEmpty) { return; }
+        saveHighlightFromSelection(editor, editor.selection);
     });
 
     // ── Remove highlight at cursor command ─────────────────────────────────────
@@ -215,7 +224,6 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     // ── Auto-highlight on selection ────────────────────────────────────────────
-    let selectionDebounce: ReturnType<typeof setTimeout> | undefined;
     const selectionDisposable = vscode.window.onDidChangeTextEditorSelection(e => {
         if (e.textEditor.document.uri.scheme !== 'codereader') { return; }
         const selection = e.selections[0];
@@ -223,22 +231,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         clearTimeout(selectionDebounce);
         selectionDebounce = setTimeout(() => {
-            const textLineRanges = provider.getTextLineRanges(e.textEditor.document.uri);
-            const renderedToBook = buildRenderedToBookLineMap(textLineRanges);
-            const startBookLine = renderedToBook.get(selection.start.line);
-            const endBookLine = renderedToBook.get(selection.end.line);
-            if (startBookLine === undefined || endBookLine === undefined) { return; }
-            const [startTextStart] = textLineRanges.get(selection.start.line)!;
-            const [endTextStart] = textLineRanges.get(selection.end.line)!;
-
-            const hash = Storage.hash(e.textEditor.document.uri.path);
-            storage.saveHighlight(hash, {
-                startBookLine,
-                startCharOffset: selection.start.character - startTextStart,
-                endBookLine,
-                endCharOffset: selection.end.character - endTextStart,
-            });
-            applyHighlights(e.textEditor, storage, highlightDecorationType, provider);
+            saveHighlightFromSelection(e.textEditor, selection);
         }, 600);
     });
 
@@ -287,10 +280,11 @@ export function activate(context: vscode.ExtensionContext) {
                     fsPath: document.uri.path
                 }));
                 const removeCmd = `command:codereader.removeHighlightAt?${removeArg}`;
+                const escapedText = escapeMarkdown(text);
                 const md = new vscode.MarkdownString(
-                    `**Highlighted passage**\n\n> ${text.replace(/\n/g, '\n> ')}\n\n[Remove highlight](${removeCmd})`
+                    `**Highlighted passage**\n\n> ${escapedText.replace(/\n/g, '\n> ')}\n\n[Remove highlight](${removeCmd})`
                 );
-                md.isTrusted = true;
+                md.isTrusted = { enabledCommands: ['codereader.removeHighlightAt'] };
                 return new vscode.Hover(md);
             }
         }
@@ -310,8 +304,11 @@ export function activate(context: vscode.ExtensionContext) {
     const textEditorDisposable = vscode.window.onDidChangeTextEditorVisibleRanges(e => {
         if (e.textEditor.document.uri.scheme !== 'codereader') { return; }
         if (e.visibleRanges.length > 0) {
-            const hash = Storage.hash(e.textEditor.document.uri.path);
-            storage.saveProgress(hash, e.visibleRanges[0].start.line);
+            clearTimeout(progressDebounce);
+            progressDebounce = setTimeout(() => {
+                const hash = Storage.hash(e.textEditor.document.uri.path);
+                storage.saveProgress(hash, e.visibleRanges[0].start.line);
+            }, 500);
         }
     });
 
@@ -329,12 +326,14 @@ export function activate(context: vscode.ExtensionContext) {
     const updateStatusBar = () => {
         const editor = vscode.window.activeTextEditor;
         if (editor?.document.uri.scheme === 'codereader') {
+            vscode.commands.executeCommand('setContext', 'codereader.isActive', true);
             const lang = provider.getLanguage(editor.document.uri)
                 ?? vscode.workspace.getConfiguration('codereader').get<LanguageId>('language', 'python');
             const option = LANGUAGE_OPTIONS.find(o => o.id === lang);
             statusBarItem.text = `$(file-code) ${option?.label ?? lang}`;
             statusBarItem.show();
         } else {
+            vscode.commands.executeCommand('setContext', 'codereader.isActive', false);
             statusBarItem.hide();
         }
     };
@@ -391,8 +390,12 @@ export function activate(context: vscode.ExtensionContext) {
         openEpubDisposable, highlightDisposable, removeHighlightDisposable,
         removeAtDisposable, selectionDisposable, hoverDisposable,
         textEditorDisposable, editorProviderRegistration, providerRegistration,
-        switchLanguageDisposable, configChangeDisposable
+        switchLanguageDisposable, configChangeDisposable,
+        highlightDecorationType, provider
     );
 }
 
-export function deactivate() { }
+export function deactivate() {
+    clearTimeout(selectionDebounce);
+    clearTimeout(progressDebounce);
+}

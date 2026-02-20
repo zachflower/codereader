@@ -1,0 +1,10 @@
+.vscode/**
+node_modules/**
+src/**
+out/**
+*.epub
+*.map
+esbuild.js
+eslint.config.js
+tsconfig.json
+.gitignore

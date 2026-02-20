@@ -13,13 +13,22 @@ export interface Book {
     chapters: BookChapter[];
 }
 
+const NAMED_ENTITIES: Record<string, string> = {
+    'amp': '&', 'lt': '<', 'gt': '>', 'nbsp': ' ',
+    'quot': '"', 'apos': "'", 'mdash': '\u2014', 'ndash': '\u2013',
+    'lsquo': '\u2018', 'rsquo': '\u2019', 'ldquo': '\u201C', 'rdquo': '\u201D',
+    'hellip': '\u2026', 'eacute': '\u00E9', 'egrave': '\u00E8', 'agrave': '\u00E0',
+    'ccedil': '\u00E7', 'ouml': '\u00F6', 'uuml': '\u00FC', 'iuml': '\u00EF',
+    'copy': '\u00A9', 'reg': '\u00AE', 'trade': '\u2122',
+    'sect': '\u00A7', 'para': '\u00B6', 'deg': '\u00B0',
+    'frac12': '\u00BD', 'frac14': '\u00BC', 'frac34': '\u00BE',
+};
+
 export class EpubParser {
     private zip: AdmZip;
-    private parser: xml2js.Parser;
 
     constructor(filePath: string) {
         this.zip = new AdmZip(filePath);
-        this.parser = new xml2js.Parser();
     }
 
     async parse(): Promise<Book> {
@@ -65,7 +74,7 @@ export class EpubParser {
             const fullPath = path.join(baseDir, href).replace(/\\/g, '/');
             const content = this.readText(fullPath);
             if (content) {
-                const text = await this.extractTextFromHtml(content);
+                const text = this.extractTextFromHtml(content);
                 // Simple heuristic to ignore empty/nav chapters
                 if (text.trim().length > 0) {
                     chapters.push({
@@ -86,28 +95,20 @@ export class EpubParser {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     private parseXml(xml: string): Promise<any> {
-        return new Promise((resolve, reject) => {
-            this.parser.parseString(xml, (err, result) => {
-                if (err) reject(err);
-                else resolve(result);
-            });
-        });
+        return xml2js.parseStringPromise(xml);
     }
 
-    private async extractTextFromHtml(html: string): Promise<string> {
+    private extractTextFromHtml(html: string): string {
         // Replace closing block-level tags with paragraph breaks
         let text = html.replace(/<\/(p|div|h[1-6]|li|blockquote|section|article)>|<br\s*\/?>/gi, '\n\n');
         // Strip all remaining tags
         text = text.replace(/<[^>]+>/g, '');
-        // Decode common HTML entities
-        text = text
-            .replace(/&amp;/g, '&')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&nbsp;/g, ' ')
-            .replace(/&quot;/g, '"')
-            .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
-            .replace(/&apos;/g, "'");
+        // Decode HTML entities (named, decimal, and hex)
+        text = text.replace(/&(?:#(\d+)|#x([0-9a-fA-F]+)|(\w+));/g, (match, dec, hex, named) => {
+            if (dec) { return String.fromCharCode(Number(dec)); }
+            if (hex) { return String.fromCharCode(parseInt(hex, 16)); }
+            return NAMED_ENTITIES[named] ?? match;
+        });
         // Collapse horizontal whitespace within lines
         text = text.replace(/[ \t]+/g, ' ');
         return text.replace(/\n{3,}/g, '\n\n').trim();

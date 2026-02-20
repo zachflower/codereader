@@ -8,8 +8,6 @@ export class CGenerator extends LanguageGenerator {
     protected readonly methodNames = METHODS;
     protected readonly varNames    = VARS;
 
-    private _className = 'Book';
-
     protected fileHeader(title: string, author: string): string[] {
         return [
             `/*`,
@@ -24,7 +22,6 @@ export class CGenerator extends LanguageGenerator {
     }
 
     protected classOpen(className: string): string[] {
-        this._className = className;
         return [
             `typedef struct {`,
             `    int current_chapter;`,
@@ -34,7 +31,7 @@ export class CGenerator extends LanguageGenerator {
     }
 
     protected chapterOpen(index: number): string[] {
-        return [`int chapter_${index}(${this._className} *b) {`];
+        return [`int chapter_${index}(${this.className} *b) {`];
     }
 
     protected chapterClose(): string[] {

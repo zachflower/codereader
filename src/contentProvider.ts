@@ -10,6 +10,10 @@ export class CodeReaderContentProvider implements vscode.TextDocumentContentProv
 
     constructor() { }
 
+    dispose(): void {
+        this._onDidChange.dispose();
+    }
+
     provideTextDocumentContent(uri: vscode.Uri): Promise<string> {
         return this.generateBookContent(uri);
     }

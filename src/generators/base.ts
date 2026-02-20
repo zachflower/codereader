@@ -6,7 +6,8 @@ export interface GenerationResult {
     textLineRanges: Map<number, [number, number]>;
 }
 
-export type LanguageId = 'python' | 'javascript' | 'php' | 'go' | 'c' | 'cpp' | 'rust' | 'ruby' | 'csharp' | 'vb' | 'typescript' | 'objectivec' | 'java' | 'swift' | 'shellscript' | 'bat' | 'powershell' | 'clojure';
+export const LANGUAGE_IDS = ['python', 'javascript', 'php', 'go', 'c', 'cpp', 'rust', 'ruby', 'csharp', 'vb', 'typescript', 'objectivec', 'java', 'swift', 'shellscript', 'bat', 'powershell', 'clojure'] as const;
+export type LanguageId = typeof LANGUAGE_IDS[number];
 
 // Describes how a single text line should be emitted.
 // `before`/`after` carry non-text lines surrounding it (e.g. block-comment delimiters).
@@ -25,6 +26,7 @@ export const INDENT = '        ';
 
 export abstract class LanguageGenerator {
     abstract readonly languageId: LanguageId;
+    protected className = 'Book';
 
     protected abstract readonly methodNames: readonly string[];
     protected abstract readonly varNames: readonly string[];
@@ -50,6 +52,7 @@ export abstract class LanguageGenerator {
         };
 
         const className = this.toClassName(book.title);
+        this.className = className;
 
         for (const line of this.fileHeader(book.title, book.author)) { emit(line); }
         emit('');
