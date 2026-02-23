@@ -39,7 +39,10 @@ export class EpubParser {
         }
 
         const containerData = await this.parseXml(containerXml);
-        const rootFile = containerData.container.rootfiles[0].rootfile[0].$['full-path'];
+        const rootFile = this.asString(containerData?.container?.rootfiles?.[0]?.rootfile?.[0]?.$?.['full-path']);
+        if (!rootFile) {
+            throw new Error('Invalid EPUB: Missing rootfile full-path in META-INF/container.xml');
+        }
 
         // 2. Parse content.opf
         const contentOpf = this.readText(rootFile);
@@ -48,17 +51,25 @@ export class EpubParser {
         }
 
         const opfData = await this.parseXml(contentOpf);
-        const metadata = opfData.package.metadata[0];
-        const manifest = opfData.package.manifest[0].item;
-        const spine = opfData.package.spine[0].itemref;
+        const metadata = opfData?.package?.metadata?.[0] ?? {};
+        const manifest = Array.isArray(opfData?.package?.manifest?.[0]?.item)
+            ? opfData.package.manifest[0].item
+            : [];
+        const spine = Array.isArray(opfData?.package?.spine?.[0]?.itemref)
+            ? opfData.package.spine[0].itemref
+            : [];
 
-        const title = metadata['dc:title']?.[0] || 'Unknown Title';
-        const author = metadata['dc:creator']?.[0]?._ || metadata['dc:creator']?.[0] || 'Unknown Author';
+        const title = this.asString(metadata['dc:title']?.[0]) ?? 'Unknown Title';
+        const author = this.asString(metadata['dc:creator']?.[0]) ?? 'Unknown Author';
 
         // 3. Map spine items to file paths
         const manifestMap: { [id: string]: string } = {};
         for (const item of manifest) {
-            manifestMap[item.$.id] = item.$.href;
+            const id = this.asString(item?.$?.id);
+            const href = this.asString(item?.$?.href);
+            if (id && href) {
+                manifestMap[id] = href;
+            }
         }
 
         const baseDir = path.dirname(rootFile);
@@ -67,7 +78,9 @@ export class EpubParser {
         // 4. Extract content from spine items
         let chapterCounter = 1;
         for (const itemRef of spine) {
-            const id = itemRef.$.idref;
+            const id = this.asString(itemRef?.$?.idref);
+            if (!id) continue;
+
             const href = manifestMap[id];
             if (!href) continue;
 
@@ -91,6 +104,23 @@ export class EpubParser {
     private readText(entryName: string): string | null {
         const entry = this.zip.getEntry(entryName);
         return entry ? this.zip.readAsText(entry) : null;
+    }
+
+    private asString(value: unknown): string | null {
+        if (typeof value === 'string') {
+            return value;
+        }
+
+        if (typeof value === 'number' || typeof value === 'boolean') {
+            return String(value);
+        }
+
+        if (value && typeof value === 'object' && '_' in value) {
+            const text = (value as { _: unknown })._;
+            return this.asString(text);
+        }
+
+        return null;
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
