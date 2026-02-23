@@ -81,7 +81,10 @@ async function openEpub(
     provider: CodeReaderContentProvider,
     wordWrapAppliedDocs: Set<string>
 ): Promise<vscode.TextEditor | undefined> {
-    const codereaderUri = epubFileUri.with({ scheme: 'codereader' });
+    const codereaderUri = epubFileUri.with({
+        scheme: 'codereader',
+        query: `source=${encodeURIComponent(epubFileUri.toString())}`
+    });
     const doc = await vscode.workspace.openTextDocument(codereaderUri);
     const lang = vscode.workspace.getConfiguration('codereader').get<LanguageId>('language', 'python');
     await vscode.languages.setTextDocumentLanguage(doc, lang);

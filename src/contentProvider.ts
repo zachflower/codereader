@@ -44,7 +44,7 @@ export class CodeReaderContentProvider implements vscode.TextDocumentContentProv
     }
 
     private async generateBookContent(uri: vscode.Uri): Promise<string> {
-        const epubPath = uri.path;
+        const epubPath = this.resolveEpubPath(uri);
         console.log(`Parsing EPUB at: ${epubPath}`);
 
         const lang = this.languageOverrides.get(uri.path)
@@ -62,6 +62,28 @@ export class CodeReaderContentProvider implements vscode.TextDocumentContentProv
             console.error('Error parsing EPUB:', errorMessage);
             return errorComment(lang, errorMessage);
         }
+    }
+
+    private resolveEpubPath(uri: vscode.Uri): string {
+        const params = new URLSearchParams(uri.query);
+        const source = params.get('source');
+        if (source) {
+            try {
+                const sourceUri = vscode.Uri.parse(decodeURIComponent(source));
+                if (sourceUri.scheme === 'file') {
+                    return sourceUri.fsPath;
+                }
+                return sourceUri.path;
+            } catch {
+                // Fall back below if parsing fails
+            }
+        }
+
+        if (uri.scheme === 'file') {
+            return uri.fsPath;
+        }
+
+        return uri.path;
     }
 }
 
