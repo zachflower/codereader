@@ -51,7 +51,7 @@ export class CodeReaderContentProvider implements vscode.TextDocumentContentProv
         const epubPath = this.resolveEpubPath(uri);
         console.log(`Parsing EPUB at: ${epubPath}`);
 
-        const lang = this.languageOverrides.get(uri.path)
+        const lang = this.languageOverrides.get(this.key(uri))
             ?? vscode.workspace.getConfiguration('codereader').get<LanguageId>('language', 'python');
 
         try {
