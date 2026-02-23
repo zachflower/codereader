@@ -93,7 +93,6 @@ async function openEpub(
     // Apply word wrap settings once per document lifetime
     const key = codereaderUri.toString();
     if (!wordWrapAppliedDocs.has(key)) {
-        wordWrapAppliedDocs.add(key);
         const crConfig = vscode.workspace.getConfiguration('codereader');
         const autoWordWrap = crConfig.get<boolean>('wordWrap', true);
 
@@ -105,9 +104,29 @@ async function openEpub(
                 .getConfiguration('editor', doc.uri)
                 .get<string>('wordWrap');
             if (!currentWrap || currentWrap === 'off') {
+                const ensureActiveEditor = async () => {
+                    if (vscode.window.activeTextEditor?.document.uri.toString() !== doc.uri.toString()) {
+                        await vscode.window.showTextDocument(doc, {
+                            preview: false,
+                            preserveFocus: false,
+                            viewColumn: editor.viewColumn
+                        });
+                    }
+                };
+
+                await ensureActiveEditor();
                 await vscode.commands.executeCommand('editor.action.toggleWordWrap');
+
+                // Retry once on next tick for platform-specific focus races (seen on Windows)
+                await new Promise<void>(resolve => setTimeout(resolve, 0));
+                if (vscode.window.activeTextEditor?.document.uri.toString() !== doc.uri.toString()) {
+                    await ensureActiveEditor();
+                    await vscode.commands.executeCommand('editor.action.toggleWordWrap');
+                }
             }
         }
+
+        wordWrapAppliedDocs.add(key);
     }
 
     const hash = Storage.hash(epubFileUri.path);
