@@ -157,8 +157,15 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.workspace.onDidCloseTextDocument(doc => {
             if (doc.uri.scheme === 'codereader') {
-                wordWrapAppliedDocs.delete(doc.uri.toString());
-                provider.clearLanguage(doc.uri);
+                setTimeout(() => {
+                    const stillVisible = vscode.window.visibleTextEditors.some(
+                        e => e.document.uri.toString() === doc.uri.toString()
+                    );
+                    if (!stillVisible) {
+                        wordWrapAppliedDocs.delete(doc.uri.toString());
+                        provider.clearLanguage(doc.uri);
+                    }
+                }, 0);
             }
         })
     );

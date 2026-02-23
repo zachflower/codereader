@@ -22,24 +22,28 @@ export class CodeReaderContentProvider implements vscode.TextDocumentContentProv
         return this._onDidChange.event;
     }
 
+    private key(uri: vscode.Uri): string {
+        return uri.toString();
+    }
+
     public getTextLineRanges(uri: vscode.Uri): Map<number, [number, number]> {
-        return this.textLineRangesMap.get(uri.path) ?? new Map();
+        return this.textLineRangesMap.get(this.key(uri)) ?? new Map();
     }
 
     public getLanguage(uri: vscode.Uri): LanguageId | undefined {
-        return this.languageOverrides.get(uri.path);
+        return this.languageOverrides.get(this.key(uri));
     }
 
     public setLanguage(uri: vscode.Uri, lang: LanguageId): void {
-        this.languageOverrides.set(uri.path, lang);
+        this.languageOverrides.set(this.key(uri), lang);
     }
 
     public clearLanguage(uri: vscode.Uri): void {
-        this.languageOverrides.delete(uri.path);
+        this.languageOverrides.delete(this.key(uri));
     }
 
     public invalidate(uri: vscode.Uri): void {
-        this.textLineRangesMap.delete(uri.path);
+        this.textLineRangesMap.delete(this.key(uri));
         this._onDidChange.fire(uri);
     }
 
@@ -55,7 +59,7 @@ export class CodeReaderContentProvider implements vscode.TextDocumentContentProv
             const book = await parser.parse();
             const generator = createGenerator(lang);
             const result = generator.generate(book);
-            this.textLineRangesMap.set(uri.path, result.textLineRanges);
+            this.textLineRangesMap.set(this.key(uri), result.textLineRanges);
             return result.code;
         } catch (err: unknown) {
             const errorMessage = err instanceof Error ? err.message : String(err);
