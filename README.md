@@ -18,7 +18,6 @@ Supports 18 programming languages (and counting) for rendering, remembers your r
 - [Configuration](#configuration)
 - [Supported Languages](#supported-languages)
 - [Known Issues](#known-issues)
-- [Changelog](#changelog)
 - [License](#license)
 
 ## Features
@@ -133,19 +132,6 @@ Settings are available under **Settings → Extensions → CodeReader** or in `s
 - **Chapter titles** - Chapter titles are currently generated as `Chapter 1`, `Chapter 2`, etc. Actual titles from the EPUB TOC are not yet extracted.
 - **Large EPUBs** - Very large books are rendered in one pass and held in memory. Opening them may be slow on low-spec machines.
 
-### 0.0.1
-
-- Initial release.
-- EPUB parsing via `adm-zip` and `xml2js`.
-- Code generation in 18 programming languages.
-- Reading progress saved and restored per book.
-- Text selection highlights saved and restored per book.
-- Highlight hover tooltips with one-click removal.
-- Right-click context menu for removing highlights.
-- Status bar language indicator with quick-pick switcher.
-- Word wrap automatically applied when opening a book.
-- Auto-registers as default editor for `.epub` files.
-
 ## License
 
-[MIT](LICENSE)
+This project is licensed under the [MIT](LICENSE). &copy; 2026 Zachary Flower. All rights reserved.
